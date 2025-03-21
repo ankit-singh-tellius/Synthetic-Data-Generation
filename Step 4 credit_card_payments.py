@@ -8,15 +8,7 @@ bereau_df = pd.read_csv('bureau.csv')
 
 
 def generate_credit_card_dataset(input_df):
-    """
-    Generate a credit card statement dataset based on an input DataFrame.
     
-    Parameters:
-    input_df (pd.DataFrame): Input DataFrame containing SK_ID_CURR and other relevant data.
-    
-    Returns:
-    pd.DataFrame: Generated credit card dataset with the required columns.
-    """
     num_records = len(input_df)
     
     output_df = pd.DataFrame()
