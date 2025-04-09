@@ -1,0 +1,111 @@
+import pandas as pd
+import numpy as np
+from itertools import product
+from geopy.distance import geodesic
+import random
+
+# ------------------------------
+# STEP 1: Create Sample Dataset
+# ------------------------------
+
+# Sample facilities and their lat/long
+facilities = {
+    1: (34.05, -118.25),  # Los Angeles
+    2: (41.88, -87.63),   # Chicago
+    3: (40.71, -74.00),   # New York
+}
+
+# Sample consignees (random lat/long across USA)
+consignees = {
+    'A': (32.78, -96.80),   # Dallas
+    'B': (29.76, -95.37),   # Houston
+    'C': (39.95, -75.16),   # Philadelphia
+    'D': (33.45, -112.07),  # Phoenix
+    'E': (37.77, -122.41),  # San Francisco
+}
+
+# Generate records for each customer
+data = []
+customer_ids = [1, 2, 3]
+for cust_id in customer_ids:
+    assigned_facility = random.choice(list(facilities.keys()))
+    for cons_id, (clat, clong) in consignees.items():
+        flat, flong = facilities[assigned_facility]
+        distance = geodesic((flat, flong), (clat, clong)).miles
+        weight = random.randint(5, 20)
+        data.append({
+            'facility_id': assigned_facility,
+            'customer_id': cust_id,
+            'consignee_id': cons_id,
+            'fac_lat': flat,
+            'fac_long': flong,
+            'cons_lat': clat,
+            'cons_long': clong,
+            'distance': distance,
+            'weight': weight
+        })
+
+df = pd.DataFrame(data)
+df['scenario_flag'] = 'old'
+
+print("Sample dataset created.\n")
+
+# ------------------------------
+# STEP 2: Facility Coordinates Lookup
+# ------------------------------
+facility_coords = pd.DataFrame([
+    {'facility_id': fid, 'fac_lat': coords[0], 'fac_long': coords[1]}
+    for fid, coords in facilities.items()
+])
+
+# ------------------------------
+# STEP 3: All Customer-Facility Combos
+# ------------------------------
+customer_ids = df['customer_id'].unique()
+facility_ids = facility_coords['facility_id'].unique()
+all_combos = pd.DataFrame(list(product(customer_ids, facility_ids)), columns=['customer_id', 'new_facility_id'])
+
+# ------------------------------
+# STEP 4: Simulate Moves
+# ------------------------------
+simulated_rows = []
+
+for _, row in all_combos.iterrows():
+    cust_id = row['customer_id']
+    new_facility_id = row['new_facility_id']
+    
+    new_fac = facility_coords[facility_coords['facility_id'] == new_facility_id].iloc[0]
+    new_lat, new_long = new_fac['fac_lat'], new_fac['fac_long']
+    
+    cust_rows = df[df['customer_id'] == cust_id].copy()
+    cust_rows['facility_id'] = new_facility_id
+    cust_rows['fac_lat'] = new_lat
+    cust_rows['fac_long'] = new_long
+    cust_rows['distance'] = cust_rows.apply(
+        lambda r: geodesic((r['fac_lat'], r['fac_long']), (r['cons_lat'], r['cons_long'])).miles, axis=1
+    )
+    cust_rows['scenario_flag'] = 'new'
+    cust_rows['scenario_facility'] = new_facility_id
+    simulated_rows.append(cust_rows)
+
+# ------------------------------
+# STEP 5: Combine and Analyze
+# ------------------------------
+simulated_df = pd.concat(simulated_rows, ignore_index=True)
+df['scenario_facility'] = df['facility_id']
+final_df = pd.concat([df, simulated_df], ignore_index=True)
+
+# Average weighted distance
+agg = final_df.groupby(['customer_id', 'scenario_facility', 'scenario_flag']).apply(
+    lambda x: (x['distance'] * x['weight']).sum() / x['weight'].sum()
+).reset_index(name='avg_weighted_distance')
+
+# ------------------------------
+# STEP 6: Output
+# ------------------------------
+print("Final weighted average distances per customer-facility scenario:\n")
+print(agg)
+
+# Optionally save to CSV
+agg.to_csv("avg_weighted_distance_by_customer_facility.csv", index=False)
+final_df.to_csv("simulated_scenarios_full_data.csv", index=False)
