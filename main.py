@@ -1,128 +1,29 @@
 import pandas as pd
-import numpy as np
-import random
-from faker import Faker
-from geopy.geocoders import Nominatim
-import math
-
-
-
-####################################################################Facility_ID and related Fields####################################################################
-
-# Define the number of unique facility IDs
-num_facilities = 25  # Set to 25 unique facilities
-
-# Generate random facility IDs with varying record counts
-#---------------------------------------------------Add Numbers of Records to be generated below------------------------------------------------------
-total_records = 50000
-facility_ids = [f"Facility_{i}" for i in range(1, num_facilities + 1)]
-
-# Define facility addresses with latitude, longitude, region, and full state name
-facility_addresses = [
-    ("Vineland", "NJ", "New Jersey", 39.4864, -75.0255, "Northeast"),
-    ("Atlanta Gateway", "GA", "Georgia", 33.7490, -84.3880, "Southeast"),
-    ("Rochelle – AMC", "IL", "Illinois", 41.9230, -89.0713, "Midwest"),
-    ("Sanford", "NC", "North Carolina", 35.4799, -79.1803, "Southeast"),
-    ("Dallas", "TX", "Texas", 32.7767, -96.7970, "South"),
-    ("Belvidere-Imron", "IL", "Illinois", 42.2639, -88.8443, "Midwest"),
-    ("Piscataway", "NJ", "New Jersey", 40.5397, -74.4649, "Northeast"),
-    ("Houston", "TX", "Texas", 29.7604, -95.3698, "South"),
-    ("La Porte", "TX", "Texas", 29.6658, -95.0223, "South"),
-    ("Grand Prairie", "TX", "Texas", 32.7459, -96.9978, "South"),
-    ("Mansfield", "TX", "Texas", 32.5632, -97.1417, "South"),
-    ("Texarkana", "AR", "Arkansas", 33.4418, -94.0377, "South"),
-    ("Houston (Cedar Port Industrial Park)", "TX", "Texas", 29.7361, -94.9980, "South"),
-    ("Rochelle – Caron Road", "IL", "Illinois", 41.9230, -89.0713, "Midwest"),
-    ("Belvidere-Pearl", "IL", "Illinois", 42.2639, -88.8443, "Midwest"),
-    ("Fort Worth", "TX", "Texas", 32.7555, -97.3308, "South"),
-    ("San Antonio", "TX", "Texas", 29.4241, -98.4936, "South"),
-    ("Oklahoma City", "OK", "Oklahoma", 35.4676, -97.5164, "South"),
-    ("Tulsa", "OK", "Oklahoma", 36.1540, -95.9928, "South"),
-    ("Kansas City", "KS", "Kansas", 39.1155, -94.6268, "Midwest"),
-    ("St. Louis", "MO", "Missouri", 38.6273, -90.1979, "Midwest"),
-    ("Memphis", "TN", "Tennessee", 35.1495, -90.0490, "South"),
-    ("Nashville", "TN", "Tennessee", 36.1627, -86.7816, "South"),
-    ("Louisville", "KY", "Kentucky", 38.2527, -85.7585, "South"),
-    ("Indianapolis", "IN", "Indiana", 39.7684, -86.1581, "Midwest")
-]
-
-# Randomly assign records to facilities while ensuring a total of 10,000 records
-records_per_facility = np.random.multinomial(total_records, np.random.dirichlet(np.ones(num_facilities), size=1)[0])
-
-# Create the DataFrame
-data = []
-for (facility, count), (city, state, state_full, lat, long, region) in zip(zip(facility_ids, records_per_facility), facility_addresses):
-    data.extend([(facility, city, state, state_full, lat, long, region)] * count)  # Repeat facility ID with city, state, state full, lat, long, and region 'count' times
-
-facility_records = pd.DataFrame(data, columns=['Facility_ID', 'clean_facility_city', 'clean_facility_state', 'clean_facility_state_full', 'clean_facility_lat', 'clean_facility_long', 'clean_facility_region'])
-
-# Shuffle the DataFrame
-facility_records = facility_records.sample(frac=1, random_state=42).reset_index(drop=True)
-
-# Compute frequency distribution
-facility_counts = facility_records['Facility_ID'].value_counts().reset_index()
-facility_counts.columns = ['Facility_ID', 'Count']
-
-
-#facility_records.to_csv('output.csv', index=False)
-
-#print("CSV file saved successfully!")
-
-####################################################################CONSIGNEES and related Fields####################################################################
-# Generate 900 unique consignee parent IDs
-#----------------------------------------------------------------------------------Enter Number of CONSIGNEES Required below-----------------------------------
-UNIQUE_CONSIGNEES = 400
-consignee_ids = [f"cons_{i}" for i in range(1, UNIQUE_CONSIGNEES + 1)]
-
-# Distribute them randomly in unequal numbers
-consignee_distribution = np.random.multinomial(len(facility_records), np.random.dirichlet(np.ones(UNIQUE_CONSIGNEES), size=1)[0])
-
-# Create a list with consignee IDs based on the random distribution
-consignee_list = []
-for cons_id, count in zip(consignee_ids, consignee_distribution):
-    consignee_list.extend([cons_id] * count)
-
-# Shuffle the consignee list
-random.shuffle(consignee_list)
-
-# Ensure the list has exactly the same number of records as facility_records
-facility_records['Clean_Consignee_parent_ID'] = consignee_list[:len(facility_records)]
-
-
-####################################################################clean_consignee_type column####################################################################
-
-
-# Assign clean_consignee_type based on given probabilities
-location_types = ["Type 1", "Type 2", "Type 3", "Type 4", "Type 5"]
-probabilities = [0.05, 0.25, 0.20, 0.40, 0.10]  # Given ratios
-facility_records["clean_consignee_type"] = random.choices(location_types, probabilities, k=len(facility_records))
-
-
-# Save to CSV
-#facility_records.to_csv('output_with_consignees.csv', index=False)
-
-
-
-
-####################################################################CONSIGNEES and related Fields####################################################################
-import pandas as pd
 import random
 from faker import Faker
 import pgeocode  # For fetching ZIP code, latitude, and longitude
+import numpy as np 
+import random
+from datetime import timedelta
 
 # Initialize Faker
 fake = Faker()
 nomi = pgeocode.Nominatim("us")  # Initialize pgeocode for US ZIP code lookup
 
-# Define the number of total records and unique consignee IDs
+# Define the number of group IDs and records
+num_account_group_ids = 300
+total_records = num_account_group_ids  # Number of records is now equal to the number of group IDs
 
+# Define GPO Tier values and their probabilities
+gpo_tiers = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "Unknown"]
+gpo_probabilities = [0.18, 0.08, 0.41, 0.28, 0.05]  # Sum of probabilities should be 1.0
 
-# Define US regions by state
-regions = {
-    "Northeast": ["ME", "NH", "VT", "MA", "RI", "CT", "NY", "NJ", "PA"],
-    "Midwest": ["OH", "IN", "IL", "MI", "WI", "MO", "ND", "SD", "NE", "KS", "MN", "IA"],
-    "South": ["DE", "MD", "VA", "WV", "KY", "NC", "SC", "TN", "GA", "FL", "AL", "MS", "AR", "LA", "OK", "TX"],
-    "West": ["MT", "ID", "WY", "CO", "NM", "AZ", "UT", "NV", "WA", "OR", "CA", "AK", "HI"]
+# Define region and territory mapping (you might need to expand this)
+region_territory_map = {
+    "Northeast": ["NY Metro", "New England", "Mid-Atlantic"],
+    "Midwest": ["Great Lakes", "Plains States"],
+    "South": ["Southeast", "Texas/Oklahoma", "Florida"],
+    "West": ["Pacific Northwest", "Southwest", "California"]
 }
 
 # Function to get a valid ZIP code and related data
@@ -130,272 +31,224 @@ def get_zip_data():
     while True:
         random_zip = str(random.randint(10000, 99999))  # Generate a random ZIP
         zip_info = nomi.query_postal_code(random_zip)
-
         if pd.notna(zip_info["state_code"]):
-            return zip_info["postal_code"], zip_info["place_name"], zip_info["state_code"], zip_info["state_name"], zip_info["latitude"], zip_info["longitude"]
+            return zip_info["postal_code"], zip_info["place_name"], zip_info["state_code"], zip_info["state_name"]
 
 # Function to determine the region based on the state abbreviation
 def get_region(state_abbr):
-    for region, states in regions.items():
-        if state_abbr in states:
-            return region
-    return "Unknown"
+    # Basic mapping, you might need a more comprehensive one
+    northeast = ["ME", "NH", "VT", "MA", "RI", "CT", "NY", "NJ", "PA"]
+    midwest = ["OH", "IN", "IL", "MI", "WI", "MO", "ND", "SD", "NE", "KS", "MN", "IA"]
+    south = ["DE", "MD", "VA", "WV", "KY", "NC", "SC", "TN", "GA", "FL", "AL", "MS", "AR", "LA", "OK", "TX"]
+    west = ["MT", "ID", "WY", "CO", "NM", "AZ", "UT", "NV", "WA", "OR", "CA", "AK", "HI"]
 
-# Generate unique consignees
-unique_consignees = []
-for i in range(1, UNIQUE_CONSIGNEES + 1):
-    zipcode, city, state_abbr, state_full, lat, long = get_zip_data()
+    if state_abbr in northeast:
+        return "Northeast"
+    elif state_abbr in midwest:
+        return "Midwest"
+    elif state_abbr in south:
+        return "South"
+    elif state_abbr in west:
+        return "West"
+    else:
+        return "Unknown"
 
-    country = "USA"
-    region = get_region(state_abbr)  # Assign correct region
+# Function to generate a random territory within a given region
+def get_territory(region):
+    if region in region_territory_map:
+        return random.choice(region_territory_map[region])
+    else:
+        return "Unknown"
 
-    unique_consignees.append({
-        "Clean_Consignee_parent_ID": f"cons_{i}",
-        "Clean_Consignee_City": city,
-        "Clean_Consignee_State": state_abbr,
-        "clean_cons_Full State": state_full,
-        "cons_zipcode_full": zipcode,
-        "country": country,
-        "clean_cons_region": region,
-        "clean_cons_lat": lat,
-        "clean_cons_long": long
+# Function to generate a random VCID/RELED
+def generate_vcid_reled():
+    prefix = random.choice(["cv", "re"])
+    suffix = f"{random.randint(100000, 999999):06d}"  # Generate a 6-digit number with leading zeros
+    return prefix + suffix
+
+# Generate the data
+data = []
+for i in range(total_records):
+    account_group_id = f"ACG_{i+1:03d}"  # Generate a unique Account Group ID based on the record number
+    account_group_name = fake.company() + " Group"
+    account_group_address = fake.address()
+    zipcode, city, state_abbr, state_full = get_zip_data()  # Get full zip data
+    vcid_reled = generate_vcid_reled()
+    gpo_tier = random.choices(gpo_tiers, weights=gpo_probabilities, k=1)[0]
+    region = get_region(state_abbr)
+    territory = get_territory(region)
+
+    data.append({
+        "VCID_Reled": vcid_reled,
+        "Account Group ID": account_group_id,
+        "Account Group Name": account_group_name,
+        "Account Group Address": account_group_address,
+        "Account Zip": zipcode,
+        "GPO Tier": gpo_tier,
+        "Region": region,
+        "Territory": territory
     })
 
-# Expand to total records
-data = []
-for _ in range(total_records):
-    consignee = random.choice(unique_consignees)
-    data.append(consignee)
+# Convert to Pandas DataFrame
+df = pd.DataFrame(data)
 
-# Convert to DataFrame
-consignee_df = pd.DataFrame(data).drop_duplicates()
+# You can save the DataFrame to a CSV file if needed
+#df.to_csv("group_id.csv", index=False)
 
+existing_df = pd.DataFrame(data)
 
-####################################################################flow_type column####################################################################
+num_unique_records = len(existing_df['Account Group ID'].unique())
 
-# Assign flow_type (10% as 'Inventory Deployment', 90% as 'Order Fulfillment')
-def assign_flow_type():
-    # First, check if it's 'Inventory Deployment' (10% chance)
-    if random.random() < 0.15:
-        
-        category_chance = random.random()
-        if category_chance < 0.15:  # 15% of 10% = 1.5%
-            return "3PL"
-        elif category_chance < 0.30:  # 15% of 10% = 1.5%
-            return "AMC"
-        elif category_chance < 0.65:  # 35% of 10% = 3.5%
-            return "Inventory Deployment"
-        else:  # 35% of 10% = 3.5%
-            return "Americold"
+# 1. Determine the number of sale dates for each unique record
+num_sales_per_record = []
+for _ in range(num_unique_records):
+    if random.random() < 0.1:  # 10% of records
+        num_sales_per_record.append(random.randint(4000, 5000))
     else:
-        return "Order Fulfillment"
-
-# Assign flow type to each row in the dataframe
-consignee_df["flow_type"] = [assign_flow_type() for _ in range(len(consignee_df))]
-
-
-####################################################################clean_location_type column####################################################################
-# Assign clean_location_type based on given probabilities
-location_types = ["Type 1", "Type 2", "Type 3", "Type 4", "Type 5"]
-probabilities = [0.15, 0.35, 0.20, 0.25, 0.05]  # Given ratios
-consignee_df["clean_location_type"] = random.choices(location_types, probabilities, k=len(consignee_df))
-
-
-# Save to CSV
-#consignee_df.to_csv("generated_consignees_data.csv", index=False)
-
-
-
-####################################################################CONSIGNEES and Facilities Merged####################################################################
-
-result = facility_records.merge(consignee_df, on='Clean_Consignee_parent_ID', how='inner')
-
-
-####################################################################Adding Skus####################################################################
-np.random.seed(42)  
-
-# Generate skus column with values from 1 to 25 in unequal distribution
-result['skus'] = np.random.choice(range(1, 26), size=len(result), p=np.random.dirichlet(np.ones(25), size=1)[0])
-
-####################################################################in_region column####################################################################
-result['in_region'] = np.where(result['clean_facility_region'] == result['clean_cons_region'], 'In Region', 'Out of Region')
-
-
-####################################################################ob_shipments column####################################################################
-
-
-np.random.seed(42)
-
-# Function to assign ob_shipments
-def assign_ob_shipments(flow_type):
-    if flow_type == 'Order Fulfillment':
-        # More weight towards lower values (e.g., exponential decay)
-        weights = np.linspace(1, 0.2, 14)  # Higher weight for smaller numbers
-        weights /= weights.sum()  # Normalize to sum to 1
-        return np.random.choice(range(1, 15), p=weights)
-
-    elif flow_type == 'Inventory Deployment':
-        # More weight towards higher values (e.g., increasing trend)
-        weights = np.linspace(0.2, 1, 14)  # Higher weight for larger numbers
-        weights /= weights.sum()
-        return np.random.choice(range(8, 22), p=weights)
-
-    # Default case: Skewed towards middle values (triangular distribution)
-    return int(np.random.triangular(1, 12, 22))
-
-result['ob_shipments'] = result['flow_type'].apply(assign_ob_shipments)
-
-
-
-
-
-####################################################################throughput_pallets column####################################################################
-#Assuming 10 to 25 pellets per shipment in 53 foot trailer for FULL Truck Load and half truck load
-# Assign random pallets per shipment (between 10 and 25)
-scale = 5  # Controls the spread (adjust as needed)
-multipliers = np.clip(np.random.exponential(scale, size=len(result)), 10, 25).astype(int)
-
-result['throughput_pallets'] = result['ob_shipments'] * multipliers
-
-####################################################################ob_weight column####################################################################
-
-# Assign random pallets weight from 50 punds to 800 pound 
-result['ob_weight'] = result['throughput_pallets'] * np.random.randint(50, 800, size=len(result))
-
-####################################################################shipment_size column####################################################################
-
-# Calculate the shipment_size
-result['shipment_size'] = result['ob_weight'] / result['ob_shipments']
-
-####################################################################inventory_pallet_positions column####################################################################
-
-result['inventory_pallet_positions'] = result['throughput_pallets'] * np.random.uniform(1.1, 3, size=len(result)).astype(int)
-
-####################################################################Distance column####################################################################
-
-
-# Haversine function to calculate distance
-def haversine(lat1, lon1, lat2, lon2):
-    # Radius of the Earth in km
-    R = 6371.0
-    
-    # Convert degrees to radians
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    
-    # Haversine formula
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    
-    # Distance in kilometers
-    distance = R * c
-    return round(distance, 2) 
-
-# Example DataFrame with the required columns
-
-# Apply the haversine function to calculate the distance
-result['distance'] = result.apply(lambda row: haversine(row['clean_cons_lat'], row['clean_cons_long'], 
-                                                   row['clean_facility_lat'], row['clean_facility_long']), axis=1)
-
-
-#################################################################### estimated_mode column ####################################################################
-
-result['weight_per_shipment'] = result['ob_weight'] / result['ob_shipments']
-
-# Assign TL or LTL based on the weight/shipment ratio
-result['estimated_mode'] = result['weight_per_shipment'].apply(lambda x: 'TL' if x > 9000 else 'LTL')
-
-result.drop('weight_per_shipment', axis=1, inplace=True)
-
-
-#################################################################### Customer_id, delivery_date column ####################################################################
-# Generate a fixed set of 22 unique customer IDs
-# Customer IDs
-customer_ids = [f"CUST_{i}" for i in range(1, 23)]
-
-# Convert to datetime
-result['delivery_date'] = pd.to_datetime(
-    np.random.choice(pd.date_range("2023-01-01", "2024-12-31"), size=len(result))
-)
-
-# Extract year-month
-result['year_month'] = result['delivery_date'].dt.to_period('M')
-
-# Precompute probability distribution for unequal assignment
-probabilities = np.random.dirichlet(np.ones(22))  # Creates weight variation
-
-# Assign unique customer_id per Facility_ID & Clean_Consignee_parent_ID in a given month
-result['customer_id'] = result.groupby(['Facility_ID', 'Clean_Consignee_parent_ID', 'year_month'])[
-    'delivery_date'
-].transform(lambda x: np.random.choice(customer_ids, size=len(x), p=probabilities))
-
-# Drop helper column
-result.drop(columns=['year_month'], inplace=True)
-
-
-
-
-#################################################################### avg_inventory_plt and avg_ob_Miles column ####################################################################
-# avg_inventory_plt and avg_ob_Miles are calculated inside tellius only
-
-# Calculate avg_inventory_plt for each (customer_id, Facility_ID) group
-result['avg_inventory_plt'] = result.groupby(['customer_id', 'Facility_ID'])['inventory_pallet_positions'].transform('mean').round(2)
-
-
-# Calculate avg_ob_Miles
-result["avg_ob_Miles"] = result.groupby(["customer_id", "Facility_ID"]).transform(
-    lambda x: round((result.loc[x.index, "ob_weight"] * result.loc[x.index, "distance"]).sum() / result.loc[x.index, "ob_weight"].sum(), 2)
-)["ob_weight"]  # Using "ob_weight" just to broadcast values correctly
-
-
-#################################################################### turns column ####################################################################
-# avg_inventory_plt and avg_ob_Miles are calculated inside tellius only
-
-turn_df = result.groupby(['Facility_ID', 'customer_id']).agg(
-    sum_throughput=('throughput_pallets', 'sum'),
-    sum_inventory=('inventory_pallet_positions', 'sum'),
-    unique_dates=('delivery_date', pd.Series.nunique)
-)
-
-# Calculate turn
-turn_df['turn'] = (turn_df['sum_throughput'] / (turn_df['sum_inventory'] / turn_df['unique_dates'])).round(2)
-
-
-# Merge back with original data (optional)
-result = result.merge(turn_df[['turn']], on=['Facility_ID', 'customer_id'], how='left')
-
-result.to_csv("test.csv", index=False)
-
-#################################################################### new data frame####################################################################
-
-df=result
-facility_df = df[[
-    'Facility_ID', 
-    'clean_facility_city', 
-    'clean_facility_state', 
-    'clean_facility_state_full', 
-    'clean_facility_lat', 
-    'clean_facility_long', 
-    'clean_facility_region'
-]].drop_duplicates().reset_index(drop=True)
-
-# Step 2: Drop facility-related columns from the main DataFrame
-df = df.drop(columns=[
-    'Facility_ID',
-    'clean_facility_city', 
-    'clean_facility_state', 
-    'clean_facility_state_full', 
-    'clean_facility_lat', 
-    'clean_facility_long', 
-    'clean_facility_region'
+        num_sales_per_record.append(random.randint(300, 2000))
+
+# 2. Create an empty list to store all the rows with sale dates
+all_rows = []
+
+# 3. Iterate through each unique record and generate sale dates with unequal yearly and monthly distribution
+start_year = 2023
+end_year = 2024
+
+# Define yearly probabilities
+yearly_probs = {
+    2023: 0.7,  # Higher probability for 2023
+    2024: 0.3   # Lower probability for 2024
+}
+
+# Define monthly probabilities (adjust these to control the distribution)
+monthly_probs = {
+    1: 0.05,  # January
+    2: 0.08,  # February
+    3: 0.12,  # March
+    4: 0.07,  # April
+    5: 0.09,  # May
+    6: 0.10,  # June
+    7: 0.06,  # July
+    8: 0.04,  # August
+    9: 0.11,  # September
+    10: 0.08, # October
+    11: 0.09, # November
+    12: 0.03   # December
+}
+
+# Normalize monthly probabilities to sum to 1
+total_monthly_prob = sum(monthly_probs.values())
+for month in monthly_probs:
+    monthly_probs[month] /= total_monthly_prob
+
+# Create a mapping between 'Account Group ID' and the number of sales
+id_to_num_sales = dict(zip(existing_df['Account Group ID'].unique(), num_sales_per_record))
+
+for account_group_id in existing_df['Account Group ID'].unique():
+    num_sales = id_to_num_sales[account_group_id]
+    dates = []
+    for _ in range(num_sales):
+        # Choose a year based on yearly probabilities
+        chosen_year = np.random.choice(list(yearly_probs.keys()), p=list(yearly_probs.values()))
+
+        # Choose a month based on monthly probabilities
+        chosen_month = np.random.choice(list(monthly_probs.keys()), p=list(monthly_probs.values()))
+
+        # Calculate the start and end dates for the chosen month and year
+        month_start_date = pd.to_datetime(f'{chosen_year}-{chosen_month:02}-01')
+        if chosen_month == 12:
+            month_end_date = pd.to_datetime(f'{chosen_year}-12-31')
+        else:
+            month_end_date = month_start_date + pd.DateOffset(months=1) - pd.Timedelta(days=1)
+
+        month_time_difference = month_end_date - month_start_date
+        # Generate a random day within the chosen month and year
+        random_days = np.random.choice(month_time_difference.days + 1, size=1)[0] # +1 to include the end date
+        random_date = month_start_date + timedelta(days=int(random_days))
+        dates.append(random_date)
+
+    # Create a temporary dataframe for the current Account Group ID
+    temp_df = pd.DataFrame({'Account Group ID': [account_group_id] * num_sales,
+                            'sale_date': dates})
+    all_rows.append(temp_df)
+
+# 4. Concatenate all the temporary dataframes into the new DataFrame
+new_sales_df = pd.concat(all_rows, ignore_index=True)
+
+# 5. Merge the new 'sale_date' column with the existing DataFrame
+# You might want to merge based on 'Account Group ID' if you want to keep other columns
+# and potentially have multiple sale dates per Account Group ID in the same row (less common for this scenario)
+# Or, if you want a separate DataFrame with 'Account Group ID' and 'sale_date':
+
+# Option 1: Create a new DataFrame with 'Account Group ID' and 'sale_date'
+final_df = new_sales_df
+#final_df.to_csv("main.csv", index=False)
+
+result = final_df.merge(df, how='left', on='Account Group ID')
+#result.to_csv("result.csv", index=False)
+
+#################################################################Adding Location id to main file###################################################
+existing_df = existing_df.sample(frac=1).reset_index(drop=True)
+n = len(result)
+
+# Generate list of location IDs
+location_ids = [f"LOC_{i:04d}" for i in range(1, 2001)]
+
+# Create a probability distribution (not uniform)
+# For example, give higher weights to the first 100 IDs
+weights = np.concatenate([
+    np.random.uniform(0.01, 0.05, size=100),   # Higher weights
+    np.random.uniform(0.0001, 0.005, size=1900)  # Lower weights
 ])
+weights /= weights.sum()  # Normalize to sum to 1
 
-# Step 3: Add a dummy key for cross join
-df['key'] = 1
-facility_df['key'] = 1
+# Sample with unequal probabilities
+result['Location_ID'] = np.random.choice(location_ids, size=n, p=weights)
 
-# Step 4: Perform the cross join and clean up
-df = df.merge(facility_df, on='key', how='outer').drop(columns=['key'])
+#################################################################Adding Product details###################################################
 
-df.to_csv("test_all.csv", index=False)
+
+
+n = len(result)
+
+# Define med types and their form
+med_types = ['type 1 med', 'type 2 med', 'type 3 med', 'type 4 med',
+             'type 5 med', 'type 6 med', 'type 7 med', 'type 8 med']
+form_map = {
+    'type 1 med': 'tablet',
+    'type 2 med': 'vial',
+    'type 3 med': 'tablet',
+    'type 4 med': 'tablet',
+    'type 5 med': 'vial',
+    'type 6 med': 'vial',
+    'type 7 med': 'vial',
+    'type 8 med': 'vial'
+}
+
+# Generate random proportions between 10% and 60%, normalized to sum to 1
+proportions = np.random.uniform(0.1, 0.6, size=8)
+proportions = proportions / proportions.sum()  # normalize to sum to 1
+
+# Determine count per type
+counts = (proportions * n).astype(int)
+
+# Adjust to ensure total equals number of rows
+while counts.sum() < n:
+    counts[np.random.randint(0, 8)] += 1
+while counts.sum() > n:
+    idx = np.where(counts > 0)[0]
+    counts[np.random.choice(idx)] -= 1
+
+# Build the full product list
+product_list = []
+for med, count in zip(med_types, counts):
+    product_list.extend([med] * count)
+
+np.random.shuffle(product_list)
+
+# Assign to dataframe
+result['Product'] = product_list
+result['Form'] = result['Product'].map(form_map)
+result['Account Group Address'] = result['Account Group Address'].str.replace('"', '', regex=False)
+result = result.drop('Account Group Address', axis=1)
+result.to_csv("main.csv", index=False)
