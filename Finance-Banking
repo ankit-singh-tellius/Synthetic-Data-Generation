@@ -1,0 +1,454 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
+
+# --- Configuration for Data Generation ---
+NUM_CUSTOMERS = 5000
+NUM_ACCOUNTS_PER_CUSTOMER_RANGE = (1, 5) # Each customer has 1 to 5 accounts
+NUM_TRANSACTIONS_PER_ACCOUNT_RANGE = (10, 200) # Each account has 10 to 200 transactions
+NUM_SERVICE_INTERACTIONS_RANGE = (0, 10) # Each customer has 0 to 10 service interactions
+NUM_CAMPAIGN_RESPONSES_RANGE = (0, 3) # Each customer responds to 0 to 3 campaigns
+
+START_DATE = datetime(2022, 1, 1)
+END_DATE = datetime(2024, 12, 31)
+TODAY = datetime(2025, 6, 30) # For current balance calculation based on activity
+
+# --- Defect Injection Probabilities ---
+PROB_NULL_CUSTOMER_INCOME = 0.03 # 3% chance of income being null
+PROB_NULL_CUSTOMER_OCCUPATION = 0.02 # 2% chance of occupation being null
+PROB_NULL_ACCOUNT_INTEREST_RATE = 0.05 # 5% chance of interest rate being null
+PROB_NULL_TRANSACTION_MERCHANT_CAT = 0.10 # 10% chance of merchant category being null
+PROB_NULL_SERVICE_RESOLUTION_TIME = 0.05 # 5% chance of resolution time being null
+PROB_NULL_CAMPAIGN_RESPONSE_DATE = 0.01 # 1% chance of campaign response date being null
+PROB_NULL_RISK_SCORE = 0.02 # 2% chance of risk score being null (new)
+PROB_NULL_CHANNEL = 0.03 # 3% chance of channel being null (new)
+
+PROB_DUPLICATE_CUSTOMER_ID = 0.005 # 0.5% chance of introducing a duplicate customer record
+PROB_DUPLICATE_ACCOUNT_ID = 0.005 # 0.5% chance of introducing a duplicate account record (minor overlap)
+
+PROB_INCONSISTENT_CASE_GENDER = 0.05 # 5% chance of inconsistent case for gender (e.g., 'male', 'FEMALE')
+PROB_INCONSISTENT_STATE_ABBREV = 0.07 # 7% chance of state being abbreviation (e.g., 'CA' instead of 'California')
+PROB_OUTLIER_TRANSACTION_AMOUNT = 0.001 # 0.1% chance of an extremely high transaction amount
+PROB_NEGATIVE_AGE = 0.001 # 0.1% chance of a negative age (data entry error)
+PROB_ZERO_BALANCE_FOR_ACTIVE = 0.005 # 0.5% chance of active account having 0 balance (error)
+PROB_JUNK_DATA_ZIP = 0.002 # 0.2% chance of junk string in zip code
+PROB_INCONSISTENT_CURRENCY = 0.01 # 1% chance of inconsistent currency symbol (new)
+PROB_EXTREME_CREDIT_SCORE = 0.001 # 0.1% chance of very low/high credit score (outlier)
+
+
+# --- Helper Functions ---
+def random_date(start, end):
+    return start + timedelta(days=random.randint(0, int((end - start).days)))
+
+# --- US-specific Data Lists ---
+us_states = [
+    'California', 'Texas', 'Florida', 'New York', 'Pennsylvania', 'Illinois',
+    'Ohio', 'Georgia', 'North Carolina', 'Michigan', 'New Jersey', 'Virginia',
+    'Washington', 'Arizona', 'Massachusetts', 'Tennessee', 'Indiana', 'Maryland'
+]
+us_state_abbreviations = {
+    'California': 'CA', 'Texas': 'TX', 'Florida': 'FL', 'New York': 'NY',
+    'Pennsylvania': 'PA', 'Illinois': 'IL', 'Ohio': 'OH', 'Georgia': 'GA',
+    'North Carolina': 'NC', 'Michigan': 'MI', 'New Jersey': 'NJ', 'Virginia': 'VA',
+    'Washington': 'WA', 'Arizona': 'AZ', 'Massachusetts': 'MA', 'Tennessee': 'TN',
+    'Indiana': 'IN', 'Maryland': 'MD'
+}
+
+us_cities = {
+    'California': ['Los Angeles', 'San Diego', 'San Francisco', 'San Jose', 'Sacramento'],
+    'Texas': ['Houston', 'San Antonio', 'Dallas', 'Austin', 'Fort Worth'],
+    'Florida': ['Miami', 'Orlando', 'Tampa', 'Jacksonville', 'Fort Lauderdale'],
+    'New York': ['New York City', 'Buffalo', 'Rochester', 'Albany'],
+    'Pennsylvania': ['Philadelphia', 'Pittsburgh', 'Allentown'],
+    'Illinois': ['Chicago', 'Aurora', 'Naperville'],
+    'Ohio': ['Columbus', 'Cleveland', 'Cincinnati'],
+    'Georgia': ['Atlanta', 'Augusta', 'Columbus'],
+    'North Carolina': ['Charlotte', 'Raleigh', 'Greensboro'],
+    'Michigan': ['Detroit', 'Grand Rapids', 'Warren'],
+    'New Jersey': ['Newark', 'Jersey City', 'Paterson'],
+    'Virginia': ['Virginia Beach', 'Chesapeake', 'Richmond'],
+    'Washington': ['Seattle', 'Spokane', 'Tacoma'],
+    'Arizona': ['Phoenix', 'Tucson', 'Mesa'],
+    'Massachusetts': ['Boston', 'Worcester', 'Springfield'],
+    'Tennessee': ['Nashville', 'Memphis', 'Knoxville'],
+    'Indiana': ['Indianapolis', 'Fort Wayne', 'Evansville'],
+    'Maryland': ['Baltimore', 'Frederick', 'Rockville']
+}
+
+def generate_us_zip_code():
+    if random.random() < PROB_JUNK_DATA_ZIP:
+        return random.choice(['N/A', 'INVALID', 'Z!P$', '123456', 'AB123']) # Inject junk
+    return f'{random.randint(10001, 99950):05d}'
+
+# --- 1. Generate Customer Data ---
+print("Generating Customer Data (USA-centric with more columns and defects)...")
+customer_data = []
+genders = ['Male', 'Female', 'Non-binary']
+education_levels = ['High School', 'Associate Degree', 'Bachelor\'s Degree', 'Master\'s Degree', 'PhD'] # New dimension
+marital_statuses = ['Single', 'Married', 'Divorced', 'Widowed'] # New dimension
+customer_segments = ['Retail', 'Premier', 'Wealth Management', 'Student'] # New dimension
+credit_scores = [np.random.randint(300, 850) for _ in range(NUM_CUSTOMERS)] # Base distribution
+churn_risk_scores = [round(random.uniform(0.1, 0.9), 2) for _ in range(NUM_CUSTOMERS)] # New measure
+
+occupations = ['Software Engineer', 'Healthcare Professional', 'Educator', 'Accountant',
+               'Student', 'Retired', 'Retail Associate', 'Sales Manager', 'Artist',
+               'Construction Worker', 'Homemaker', 'Lawyer', 'Marketing Specialist']
+
+for i in range(NUM_CUSTOMERS):
+    customer_id = f'CUST{i+1:05d}'
+
+    age = random.randint(18, 80)
+    if random.random() < PROB_NEGATIVE_AGE:
+        age = -random.randint(1, 10) # Inject negative age
+
+    gender = random.choice(genders)
+    if random.random() < PROB_INCONSISTENT_CASE_GENDER: # Inconsistent casing
+        gender = gender.upper() if random.random() < 0.5 else gender.lower()
+
+    income = round(np.random.normal(loc=75000, scale=35000), 2)
+    if random.random() < PROB_NULL_CUSTOMER_INCOME:
+        income = np.nan # Inject null income
+    else:
+        income = max(25000, income)
+
+    occupation = random.choice(occupations)
+    if random.random() < PROB_NULL_CUSTOMER_OCCUPATION:
+        occupation = np.nan # Inject null occupation
+
+    state = random.choice(us_states)
+    if random.random() < PROB_INCONSISTENT_STATE_ABBREV and state in us_state_abbreviations:
+        state = us_state_abbreviations[state] # Use abbreviation
+
+    city = random.choice(us_cities[state if state in us_cities else 'California']) # Handle potential abbrev state
+    zip_code = generate_us_zip_code()
+
+    # New columns
+    education_level = random.choice(education_levels)
+    marital_status = random.choice(marital_statuses)
+    customer_segment = random.choice(customer_segments)
+
+    credit_score = np.random.randint(300, 850)
+    if random.random() < PROB_EXTREME_CREDIT_SCORE: # Inject extreme credit score
+        credit_score = random.choice([250, 900])
+    if random.random() < PROB_NULL_RISK_SCORE:
+        credit_score = np.nan
+
+    churn_risk_score = round(random.uniform(0.1, 0.9), 2)
+    if random.random() < PROB_NULL_RISK_SCORE:
+        churn_risk_score = np.nan
+
+
+    customer_data.append([customer_id, age, gender, income, occupation, city, state, zip_code,
+                          education_level, marital_status, customer_segment, credit_score, churn_risk_score])
+
+customers_df = pd.DataFrame(customer_data, columns=[
+    'CustomerID', 'Age', 'Gender', 'Income', 'Occupation', 'City', 'State', 'ZipCode',
+    'EducationLevel', 'MaritalStatus', 'CustomerSegment', 'CreditScore', 'ChurnRiskScore'
+])
+
+num_duplicates_cust = int(NUM_CUSTOMERS * PROB_DUPLICATE_CUSTOMER_ID)
+if num_duplicates_cust > 0:
+    for _ in range(num_duplicates_cust):
+        original_row = customers_df.sample(1).iloc[0].copy()
+        customers_df = pd.concat([customers_df, pd.DataFrame([original_row])], ignore_index=True)
+print(f"Generated {len(customers_df)} customers (including potential duplicates).")
+
+# --- 2. Generate Account Data ---
+print("Generating Account Data (USA-centric with more columns and defects)...")
+account_data = []
+account_types = ['Checking', 'Savings', 'Loan', 'Credit Card', 'Investment']
+account_statuses = ['Active', 'Dormant', 'Closed']
+loan_types = ['Personal Loan', 'Auto Loan', 'Mortgage']
+investment_types = ['Brokerage Account', 'IRA', '401K', 'Mutual Fund']
+branch_locations = ['Downtown Branch', 'Suburbia West Branch', 'Eastside Digital Hub', 'Northwood Mall Branch', 'Online Only'] # New dimension
+currency_symbols = ['$', 'USD', '€', 'GBP'] # For inconsistent currency
+
+
+account_counter = 0
+for _, customer in customers_df.iterrows():
+    num_accounts = random.randint(*NUM_ACCOUNTS_PER_CUSTOMER_RANGE)
+    for _ in range(num_accounts):
+        account_id = f'ACC{account_counter+1:07d}'
+        account_counter += 1
+        acc_type = random.choice(account_types)
+
+        open_date = random_date(START_DATE, END_DATE)
+
+        current_balance = 0
+        interest_rate = 0
+        account_status = 'Active'
+        product_subtype = acc_type
+        
+        last_activity_date = random_date(open_date, TODAY) # New dimension/measure
+
+        if acc_type in ['Savings', 'Checking']:
+            current_balance = round(random.uniform(100, 250000), 2)
+            interest_rate = round(random.uniform(0.01, 1.5), 2)
+            if random.random() < PROB_NULL_ACCOUNT_INTEREST_RATE:
+                interest_rate = np.nan
+            if random.random() < 0.05:
+                account_status = 'Dormant'
+                current_balance = round(random.uniform(10, 500), 2)
+            if random.random() < PROB_ZERO_BALANCE_FOR_ACTIVE and account_status == 'Active':
+                current_balance = 0
+        elif acc_type == 'Investment':
+            current_balance = round(random.uniform(1000, 5000000), 2)
+            interest_rate = round(random.uniform(0.1, 8.0), 2) # Annualized return
+            if random.random() < PROB_NULL_ACCOUNT_INTEREST_RATE:
+                interest_rate = np.nan
+            product_subtype = random.choice(investment_types)
+        elif acc_type == 'Loan':
+            loan_amount = round(random.uniform(5000, 1000000), 2)
+            if product_subtype == 'Mortgage':
+                loan_amount = round(random.uniform(100000, 3000000), 2)
+                interest_rate = round(random.uniform(3.0, 8.0), 2)
+            elif product_subtype == 'Auto Loan':
+                loan_amount = round(random.uniform(10000, 100000), 2)
+                interest_rate = round(random.uniform(4.0, 10.0), 2)
+            else:
+                interest_rate = round(random.uniform(7.0, 20.0), 2)
+            if random.random() < PROB_NULL_ACCOUNT_INTEREST_RATE:
+                interest_rate = np.nan
+
+            outstanding_balance = round(random.uniform(0.1, 1.0) * loan_amount, 2)
+            current_balance = -outstanding_balance
+
+            if random.random() < 0.02:
+                account_status = 'Closed'
+                current_balance = 0
+            product_subtype = random.choice(loan_types)
+        elif acc_type == 'Credit Card':
+            credit_limit = round(random.uniform(500, 50000), 2)
+            outstanding_balance = round(random.uniform(0, 0.8) * credit_limit, 2)
+            current_balance = -outstanding_balance
+            interest_rate = round(random.uniform(15.0, 29.99), 2)
+            if random.random() < PROB_NULL_ACCOUNT_INTEREST_RATE:
+                interest_rate = np.nan
+            if random.random() < 0.03:
+                account_status = 'Closed'
+                current_balance = 0
+            product_subtype = 'Credit Card'
+        
+        # New columns
+        branch_location = random.choice(branch_locations)
+        currency = '$'
+        if random.random() < PROB_INCONSISTENT_CURRENCY:
+            currency = random.choice(currency_symbols) # Inject inconsistent currency
+
+        account_data.append([
+            customer['CustomerID'], account_id, acc_type, product_subtype, open_date, last_activity_date,
+            current_balance, interest_rate, account_status, branch_location, currency
+        ])
+
+accounts_df = pd.DataFrame(account_data, columns=[
+    'CustomerID', 'AccountID', 'AccountType', 'ProductSubtype', 'AccountOpenDate', 'LastActivityDate',
+    'CurrentBalance', 'InterestRate', 'AccountStatus', 'BranchLocation', 'Currency'
+])
+
+num_duplicates_acc = int(len(accounts_df) * PROB_DUPLICATE_ACCOUNT_ID)
+if num_duplicates_acc > 0:
+    for _ in range(num_duplicates_acc):
+        original_row = accounts_df.sample(1).iloc[0].copy()
+        accounts_df = pd.concat([accounts_df, pd.DataFrame([original_row])], ignore_index=True)
+
+print(f"Generated {len(accounts_df)} accounts (including potential duplicates).")
+
+# --- 3. Generate Transaction Data ---
+print("Generating Transaction Data (USA-centric with more columns and defects)...")
+transaction_data = []
+transaction_types = ['Deposit', 'Withdrawal', 'Transfer_In', 'Transfer_Out', 'Bill_Payment',
+                     'POS_Purchase', 'Online_Purchase', 'ATM_Withdrawal', 'Check_Deposit']
+merchant_categories = ['Retail', 'Groceries', 'Utilities', 'Online Services', 'Travel',
+                       'Dining', 'Healthcare', 'Entertainment', 'Education', 'Financial Services',
+                       'Gas Station', 'Rent/Mortgage', 'Automotive', 'Electronics', 'Clothing']
+transaction_channels = ['Online Banking', 'Mobile App', 'ATM', 'Branch Teller', 'Phone Banking'] # New dimension
+fraud_status_options = ['Legitimate', 'Suspicious', 'Confirmed Fraud'] # New dimension/measure
+
+transaction_counter = 0
+for _, account in accounts_df.iterrows():
+    if account['AccountStatus'] == 'Active':
+        num_transactions = random.randint(*NUM_TRANSACTIONS_PER_ACCOUNT_RANGE)
+
+        tx_start_date = account['AccountOpenDate']
+        tx_end_date = TODAY if account['AccountStatus'] == 'Active' else END_DATE
+        tx_end_date = min(tx_end_date, END_DATE)
+        if tx_end_date < tx_start_date:
+            tx_end_date = tx_start_date
+
+        for _ in range(num_transactions):
+            transaction_id = f'TXN{transaction_counter+1:08d}'
+            transaction_counter += 1
+
+            tx_date = random_date(tx_start_date, tx_end_date)
+            tx_type = random.choice(transaction_types)
+            
+            merchant_cat = random.choice(merchant_categories) if 'Purchase' in tx_type or tx_type == 'Bill_Payment' else None
+            if random.random() < PROB_NULL_TRANSACTION_MERCHANT_CAT:
+                merchant_cat = np.nan
+
+            amount = round(random.uniform(5, 10000), 2)
+            if random.random() < PROB_OUTLIER_TRANSACTION_AMOUNT:
+                amount = round(random.uniform(500000, 5000000), 2)
+
+            if tx_type in ['Withdrawal', 'Transfer_Out', 'Bill_Payment', 'POS_Purchase', 'Online_Purchase', 'ATM_Withdrawal']:
+                amount = -abs(amount)
+            else:
+                amount = abs(amount)
+
+            if account['AccountType'] == 'Loan':
+                if 'Deposit' in tx_type or 'Check_Deposit' in tx_type:
+                    tx_type = 'Loan_Repayment'
+                    amount = abs(amount)
+            elif account['AccountType'] == 'Credit Card':
+                if 'Deposit' in tx_type or 'Check_Deposit' in tx_type:
+                    tx_type = 'CreditCard_Payment'
+                    amount = abs(amount)
+            
+            # New columns
+            transaction_channel = random.choice(transaction_channels)
+            if random.random() < PROB_NULL_CHANNEL:
+                transaction_channel = np.nan # Inject null channel
+
+            # Simulate fraud status based on some conditions (e.g., high amount, specific types)
+            fraud_status = 'Legitimate'
+            if amount > 10000 and random.random() < 0.1: # High amount + random chance
+                fraud_status = 'Suspicious'
+            elif amount > 500000 and random.random() < 0.5: # Very high amount, higher chance of fraud
+                fraud_status = 'Confirmed Fraud'
+            elif tx_type in ['Transfer_Out'] and random.random() < 0.01: # Small chance for transfers
+                fraud_status = 'Suspicious'
+
+
+            transaction_data.append([
+                account['AccountID'], transaction_id, tx_date, tx_type, amount, merchant_cat,
+                transaction_channel, fraud_status
+            ])
+
+transactions_df = pd.DataFrame(transaction_data, columns=[
+    'AccountID', 'TransactionID', 'TransactionDate', 'TransactionType', 'Amount', 'MerchantCategory',
+    'TransactionChannel', 'FraudStatus'
+])
+print(f"Generated {len(transactions_df)} transactions.")
+
+# --- 4. Generate Product Holdings Data (from accounts for simplicity) ---
+print("Generating Product Holdings Data...")
+product_holdings_data = []
+for _, customer in customers_df.iterrows():
+    customer_accounts = accounts_df[accounts_df['CustomerID'] == customer['CustomerID']]
+    unique_products = set(customer_accounts['AccountType'].unique().tolist() +
+                          customer_accounts['ProductSubtype'].unique().tolist())
+    unique_products.discard(None)
+    products_held = ', '.join(sorted(list(unique_products)))
+
+    # New column: Total Number of Products
+    total_products = len(unique_products)
+
+    product_holdings_data.append([customer['CustomerID'], products_held, total_products])
+
+product_holdings_df = pd.DataFrame(product_holdings_data, columns=['CustomerID', 'ProductsHeld', 'TotalProducts'])
+print(f"Generated {len(product_holdings_df)} product holdings records.")
+
+
+# --- 5. Generate Customer Service Interaction Data ---
+print("Generating Customer Service Interaction Data (with more columns and defects)...")
+service_interaction_data = []
+interaction_reasons = [
+    'Balance Inquiry', 'Transaction Dispute', 'Account Opening Query', 'Loan Application Status',
+    'Credit Card Limit Increase Request', 'Password Reset', 'Zelle/Transfers Issue',
+    'Complaint - Service', 'Complaint - Product', 'Fraud Alert', 'Lost/Stolen Card Report',
+    'Online Banking Support', 'General Query'
+]
+resolution_times_hours = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5]
+feedback_scores = [1, 2, 3, 4, 5] # New measure (1=Poor, 5=Excellent)
+interaction_channels = ['Phone', 'Chat', 'Email', 'In-Branch'] # New dimension
+
+
+service_interaction_counter = 0
+for _, customer in customers_df.iterrows():
+    num_interactions = random.randint(*NUM_SERVICE_INTERACTIONS_RANGE)
+    for _ in range(num_interactions):
+        interaction_id = f'SVC{service_interaction_counter+1:06d}'
+        service_interaction_counter += 1
+
+        interaction_date = random_date(START_DATE, TODAY)
+        reason = random.choice(interaction_reasons)
+        resolution_time = random.choice(resolution_times_hours)
+        if random.random() < PROB_NULL_SERVICE_RESOLUTION_TIME:
+            resolution_time = np.nan
+
+        # New columns
+        feedback_score = random.choice(feedback_scores)
+        interaction_channel = random.choice(interaction_channels)
+        if random.random() < PROB_NULL_CHANNEL:
+            interaction_channel = np.nan
+
+        service_interaction_data.append([
+            customer['CustomerID'], interaction_id, interaction_date, reason, resolution_time,
+            feedback_score, interaction_channel
+        ])
+
+service_interactions_df = pd.DataFrame(service_interaction_data, columns=[
+    'CustomerID', 'InteractionID', 'InteractionDate', 'Reason', 'ResolutionTime_Hours',
+    'FeedbackScore', 'InteractionChannel'
+])
+print(f"Generated {len(service_interactions_df)} service interactions.")
+
+# --- 6. Generate Marketing Campaign Data ---
+print("Generating Marketing Campaign Data (with more columns and defects)...")
+marketing_campaign_data = []
+campaign_ids = [
+    'New Checking Account Offer', 'Credit Card Balance Transfer Promo',
+    'Mortgage Refinance Special', 'Auto Loan Rate Offer',
+    'Investment Advisory Service Intro', 'Student Banking Welcome',
+    'Retirement Planning Workshop Invite', 'Digital Banking Adoption Push'
+]
+offer_statuses = ['Accepted', 'Declined', 'No Response', 'ERROR']
+campaign_types = ['Email', 'Direct Mail', 'Digital Ad', 'SMS'] # New dimension
+campaign_costs = [10000, 25000, 5000, 15000, 30000] # New measure (example costs)
+
+
+campaign_response_counter = 0
+for _, customer in customers_df.iterrows():
+    num_responses = random.randint(*NUM_CAMPAIGN_RESPONSES_RANGE)
+    offered_campaigns = random.sample(campaign_ids, min(num_responses + 1, len(campaign_ids)))
+
+    for campaign_id in offered_campaigns:
+        campaign_response_counter += 1
+        response_id = f'MKTRESP{campaign_response_counter:07d}'
+        response_date = random_date(START_DATE, TODAY)
+        if random.random() < PROB_NULL_CAMPAIGN_RESPONSE_DATE:
+            response_date = np.nan
+
+        offer_status = random.choice(offer_statuses)
+
+        # New columns
+        campaign_type = random.choice(campaign_types)
+        campaign_cost = random.choice(campaign_costs) # Static cost per campaign for simplicity
+
+        marketing_campaign_data.append([
+            customer['CustomerID'], response_id, campaign_id, response_date, offer_status,
+            campaign_type, campaign_cost
+        ])
+
+marketing_campaigns_df = pd.DataFrame(marketing_campaign_data, columns=[
+    'CustomerID', 'ResponseID', 'CampaignID', 'ResponseDate', 'OfferStatus',
+    'CampaignType', 'CampaignCost'
+])
+print(f"Generated {len(marketing_campaigns_df)} marketing campaign responses.")
+
+# --- Save to CSV Files ---
+print("\nSaving dataframes to CSV files...")
+output_dir = './banking_data_usa_enhanced_defects/' # New output directory
+import os
+os.makedirs(output_dir, exist_ok=True)
+
+customers_df.to_csv(os.path.join(output_dir, 'customers_usa_enhanced_defects.csv'), index=False)
+accounts_df.to_csv(os.path.join(output_dir, 'accounts_usa_enhanced_defects.csv'), index=False)
+transactions_df.to_csv(os.path.join(output_dir, 'transactions_usa_enhanced_defects.csv'), index=False)
+product_holdings_df.to_csv(os.path.join(output_dir, 'product_holdings_usa_enhanced_defects.csv'), index=False)
+service_interactions_df.to_csv(os.path.join(output_dir, 'service_interactions_usa_enhanced_defects.csv'), index=False)
+marketing_campaigns_df.to_csv(os.path.join(output_dir, 'marketing_campaigns_usa_enhanced_defects.csv'), index=False)
+
+print(f"\nAll data saved to '{output_dir}' directory.")
+print("Script finished.")
