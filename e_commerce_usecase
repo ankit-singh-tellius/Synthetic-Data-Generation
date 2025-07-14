@@ -1,0 +1,233 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
+
+# --- Configuration ---
+NUM_CUSTOMERS = 1000
+NUM_PRODUCTS = 500
+NUM_CAMPAIGNS = 50
+NUM_AD_CREATIVES = 200 # More ad creatives than campaigns to ensure fan-out
+NUM_SALES_ORDERS = 5000
+NUM_MARKETING_SPEND_RECORDS = 3000 # More spend records than campaigns/creatives for daily tracking
+
+START_DATE = datetime(2024, 1, 1)
+END_DATE = datetime(2025, 6, 30)
+
+# --- Helper Functions ---
+def random_date(start, end):
+    return start + timedelta(
+        seconds=random.randint(0, int((end - start).total_seconds()))
+    )
+
+# --- 1. Dim_Customers ---
+customer_data = []
+customer_segments = ['New', 'Loyal', 'High Value', 'Churned']
+cities = ['Bengaluru', 'Mumbai', 'Delhi', 'Chennai', 'Kolkata', 'Hyderabad', 'Pune', 'Ahmedabad']
+regions = ['South', 'West', 'North', 'East', 'Central']
+
+for i in range(1, NUM_CUSTOMERS + 1):
+    customer_id = f'CUST{i:04d}'
+    customer_name = f'Customer {i}'
+    email = f'customer{i}@example.com'
+    city = random.choice(cities)
+    region = random.choice(regions)
+    segment = random.choice(customer_segments)
+    customer_data.append([customer_id, customer_name, email, city, region, segment])
+
+df_dim_customers = pd.DataFrame(customer_data, columns=[
+    'CustomerID', 'CustomerName', 'Email', 'City', 'Region', 'CustomerSegment'
+])
+print(f"Generated {len(df_dim_customers)} records for Dim_Customers.")
+
+# --- 2. Dim_Products ---
+product_data = []
+categories = ['Electronics', 'Apparel', 'Home Goods', 'Books', 'Groceries', 'Beauty', 'Sports']
+brands = ['BrandA', 'BrandB', 'BrandC', 'BrandD', 'BrandE']
+product_statuses = ['Active', 'Discontinued']
+
+for i in range(1, NUM_PRODUCTS + 1):
+    product_id = f'PROD{i:04d}'
+    product_name = f'Product {i} - {random.choice(categories)}'
+    category = random.choice(categories)
+    brand = random.choice(brands)
+    status = random.choice(product_statuses)
+    product_data.append([product_id, product_name, category, brand, status])
+
+df_dim_products = pd.DataFrame(product_data, columns=[
+    'ProductID', 'ProductName', 'Category', 'Brand', 'ProductStatus'
+])
+print(f"Generated {len(df_dim_products)} records for Dim_Products.")
+
+# --- 3. Dim_MarketingCampaigns ---
+campaign_data = []
+campaign_goals = ['Brand Awareness', 'Sales Conversion', 'Lead Generation', 'Customer Retention']
+
+for i in range(1, NUM_CAMPAIGNS + 1):
+    campaign_id = f'CAMP{i:03d}'
+    campaign_name = f'Campaign {i} - {random.choice(campaign_goals)}'
+    start_date_camp = random_date(START_DATE, datetime(2025, 3, 31))
+    end_date_camp = start_date_camp + timedelta(days=random.randint(30, 180))
+    goal = random.choice(campaign_goals)
+    campaign_data.append([campaign_id, campaign_name, start_date_camp.strftime('%Y-%m-%d'), end_date_camp.strftime('%Y-%m-%d'), goal])
+
+df_dim_marketing_campaigns = pd.DataFrame(campaign_data, columns=[
+    'MarketingCampaignID', 'CampaignName', 'CampaignStartDate', 'CampaignEndDate', 'CampaignGoal'
+])
+print(f"Generated {len(df_dim_marketing_campaigns)} records for Dim_MarketingCampaigns.")
+
+# --- 4. Dim_AdCreatives ---
+ad_creative_data = []
+creative_types = ['Image', 'Video', 'Text Ad', 'Carousel']
+call_to_actions = ['Shop Now', 'Learn More', 'Sign Up', 'Download']
+
+for i in range(1, NUM_AD_CREATIVES + 1):
+    ad_creative_id = f'ADCRT{i:04d}'
+    ad_creative_name = f'Ad Creative {i} - {random.choice(creative_types)}'
+    creative_type = random.choice(creative_types)
+    ad_headline = f'Headline for Ad {i}'
+    cta = random.choice(call_to_actions)
+    ad_creative_data.append([ad_creative_id, ad_creative_name, creative_type, ad_headline, cta])
+
+df_dim_ad_creatives = pd.DataFrame(ad_creative_data, columns=[
+    'AdCreativeID', 'AdCreativeName', 'CreativeType', 'AdHeadline', 'CallToAction'
+])
+print(f"Generated {len(df_dim_ad_creatives)} records for Dim_AdCreatives.")
+
+# --- 5. Fact_SalesOrders ---
+sales_order_data = []
+customer_ids = df_dim_customers['CustomerID'].tolist()
+product_ids = df_dim_products['ProductID'].tolist()
+campaign_ids = df_dim_marketing_campaigns['MarketingCampaignID'].tolist() # For attribution
+
+for i in range(1, NUM_SALES_ORDERS + 1):
+    order_id = f'ORD{i:05d}'
+    order_date = random_date(START_DATE, END_DATE)
+    customer_id = random.choice(customer_ids)
+    product_id = random.choice(product_ids)
+    quantity = random.randint(1, 5)
+    unit_price = round(random.uniform(5.0, 500.0), 2)
+    revenue = round(quantity * unit_price, 2)
+
+    # Simulate marketing campaign attribution (potential fan-out for sales if multiple campaigns could influence one order)
+    # For simplicity here, each order is linked to ONE campaign directly.
+    # To simulate fan-out on the sales side for the use case, you'd need a bridge table for Order-Campaign.
+    # However, the primary fan-out test is MarketingSpend-AdCreative.
+    marketing_campaign_id = random.choice(campaign_ids) if random.random() < 0.8 else None # 80% chance of attribution
+
+    sales_order_data.append([order_id, order_date.strftime('%Y-%m-%d'), customer_id, product_id,
+                             quantity, unit_price, revenue, marketing_campaign_id])
+
+df_fact_sales_orders = pd.DataFrame(sales_order_data, columns=[
+    'OrderID', 'OrderDate', 'CustomerID', 'ProductID', 'Quantity', 'UnitPrice', 'Revenue', 'MarketingCampaignID'
+])
+print(f"Generated {len(df_fact_sales_orders)} records for Fact_SalesOrders.")
+
+# --- 6. Fact_MarketingSpend (Designed for Fan-Out) ---
+marketing_spend_data = []
+channels = ['Google Ads', 'Facebook Ads', 'Email Marketing', 'Affiliate', 'Social Media']
+campaign_ids = df_dim_marketing_campaigns['MarketingCampaignID'].tolist()
+ad_creative_ids = df_dim_ad_creatives['AdCreativeID'].tolist()
+
+for i in range(1, NUM_MARKETING_SPEND_RECORDS + 1):
+    spend_id = f'MSP{i:05d}'
+    spend_date = random_date(START_DATE, END_DATE)
+    campaign_id = random.choice(campaign_ids)
+    channel = random.choice(channels)
+    spend_amount = round(random.uniform(10.0, 1000.0), 2)
+    impressions = random.randint(100, 100000)
+    clicks = random.randint(5, int(impressions * 0.1)) # Clicks are max 10% of impressions
+
+    # *** FAN-OUT LOGIC for AdCreatives per Campaign ***
+    # Assign multiple ad creatives to the same campaign ID on different rows to simulate fan-out
+    # This is the core of the deduplication test.
+    # A single campaign can run multiple ad creatives, each with their own spend record.
+    # Summing 'SpendAmount' by 'CampaignID' directly will overcount if not handled.
+    num_creatives_for_campaign = random.randint(1, 5) # Each campaign record might represent 1-5 creatives
+    # Ensure some campaigns definitely have multiple creatives associated across different spend records
+    # To force fan-out: pick a campaign, then pick multiple distinct ad creatives for it over different 'spend_id' records.
+    # Or, simpler for this generation: just ensure ad_creative_id is randomly assigned.
+    # The deduplication test relies on a campaign potentially having multiple ad_creative_ids linked
+    # via multiple rows in this fact table.
+    ad_creative_id = random.choice(ad_creative_ids)
+
+    marketing_spend_data.append([spend_id, campaign_id, spend_date.strftime('%Y-%m-%d'), channel,
+                                 spend_amount, impressions, clicks, ad_creative_id])
+
+df_fact_marketing_spend = pd.DataFrame(marketing_spend_data, columns=[
+    'MarketingSpendID', 'MarketingCampaignID', 'Date', 'Channel', 'SpendAmount', 'Impressions', 'Clicks', 'AdCreativeID'
+])
+print(f"Generated {len(df_fact_marketing_spend)} records for Fact_MarketingSpend.")
+
+# --- Save to CSV ---
+output_dir = 'tellius_test_data'
+import os
+os.makedirs(output_dir, exist_ok=True)
+
+df_dim_customers.to_csv(os.path.join(output_dir, 'dim_customers.csv'), index=False)
+df_dim_products.to_csv(os.path.join(output_dir, 'dim_products.csv'), index=False)
+df_dim_marketing_campaigns.to_csv(os.path.join(output_dir, 'dim_marketing_campaigns.csv'), index=False)
+df_dim_ad_creatives.to_csv(os.path.join(output_dir, 'dim_ad_creatives.csv'), index=False)
+df_fact_sales_orders.to_csv(os.path.join(output_dir, 'fact_sales_orders.csv'), index=False)
+df_fact_marketing_spend.to_csv(os.path.join(output_dir, 'fact_marketing_spend.csv'), index=False)
+
+print("\nCSV files generated successfully in the 'tellius_test_data' directory.")
+print("You can now import these CSVs into Tellius to create your data model and test the charts.")
+
+# --- Instructions for Tellius Setup & Testing ---
+print("\n--- Tellius Setup & Testing Instructions ---")
+print("1. Upload all .csv files from 'tellius_test_data' directory to Tellius.")
+print("2. Define the data model: ")
+print("   - Mark 'CustomerID', 'ProductID', 'MarketingCampaignID', 'AdCreativeID', 'OrderID', 'MarketingSpendID' as primary/foreign keys as appropriate.")
+print("   - Establish relationships:")
+print("     - Fact_SalesOrders.CustomerID -> Dim_Customers.CustomerID")
+print("     - Fact_SalesOrders.ProductID -> Dim_Products.ProductID")
+print("     - Fact_SalesOrders.MarketingCampaignID -> Dim_MarketingCampaigns.MarketingCampaignID (for attribution analysis)")
+print("     - Fact_MarketingSpend.MarketingCampaignID -> Dim_MarketingCampaigns.MarketingCampaignID")
+print("     - Fact_MarketingSpend.AdCreativeID -> Dim_AdCreatives.AdCreativeID (THIS IS THE KEY FAN-OUT RELATIONSHIP FOR DEDUPLICATION TEST)")
+
+print("\n3. Testing the Charts (as per your images):")
+
+print("\n   A. Configuration Panel Testing (Screenshot 1: Chart Type, Measure, Dimension, etc.)")
+print("      - Start with a new visualization.")
+print("      - Select 'Bar' chart type.")
+print("      - Drag 'MarketingCampaigns.CampaignName' to 'Dimension'.")
+print("      - Drag 'Fact_MarketingSpend.SpendAmount' to 'Measure'.")
+print("      - Expected result for SUM(SpendAmount): The total spend for each campaign should be the sum of spend amounts *associated with that campaign across all its ad creatives*, but *without double-counting* the campaign's overall budget if the tool aggregates at the campaign level. This is the main deduplication test. If you were to sum `SpendAmount` and then join to `Dim_AdCreatives` and group by CampaignName without proper handling, the `SpendAmount` for a campaign with multiple creatives would be inflated.")
+print("      - To verify: Manually sum 'SpendAmount' for a specific 'MarketingCampaignID' in 'fact_marketing_spend.csv'. Compare this to the Tellius chart value.")
+print("      - Try 'Sort By' with `SUM(SpendAmount)`.")
+print("      - Try 'Color By' with `Dim_MarketingCampaigns.CampaignGoal`.")
+
+print("\n   B. Chart Type Testing (Screenshot 3: Add Viz options)")
+print("      - **KPI:**")
+print("        - Measure: `SUM(Fact_SalesOrders.Revenue)`")
+print("        - This should show the total revenue across all sales orders.")
+print("      - **Bar:** (Already covered above for deduplication test)")
+print("      - **Line:**")
+print("        - Measure: `SUM(Fact_SalesOrders.Revenue)`")
+print("        - Dimension: `Fact_SalesOrders.OrderDate` (set to 'Day' or 'Month')")
+print("        - This will show revenue trends over time.")
+print("      - **Pie:**")
+print("        - Measure: `SUM(Fact_SalesOrders.Revenue)`")
+print("        - Dimension: `Dim_Products.Category`")
+print("        - Shows revenue distribution by product category.")
+print("      - **Table:**")
+print("        - Measures: `SUM(Fact_MarketingSpend.SpendAmount)`, `SUM(Fact_SalesOrders.Revenue)`, `COUNTD(Fact_SalesOrders.OrderID)`, `SUM(Fact_MarketingSpend.Clicks)`")
+print("        - Dimensions: `Dim_MarketingCampaigns.CampaignName`, `Dim_AdCreatives.AdCreativeName`")
+print("        - Crucially, examine the `SpendAmount` for campaigns that have multiple `AdCreativeName` entries. Ensure `SpendAmount` is not duplicated per AdCreative if you're looking at Campaign-level spend.")
+
+print("\n   C. Advanced Analytics & Filters Testing (Screenshot 3: YoY, Filters)")
+print("      - **Year Over Year (YoY):**")
+print("        - Apply this to the Line chart of `SUM(Fact_SalesOrders.Revenue)` over `OrderDate`.")
+print("        - Expect to see the YoY percentage change in revenue.")
+print("      - **Multi-Select List Filter:**")
+print("        - Add a filter for `Dim_Customers.CustomerSegment`.")
+print("        - Select multiple segments (e.g., 'Loyal', 'High Value') and observe the charts updating.")
+print("      - **Range Slider Filter:**")
+print("        - Add a filter for `Fact_SalesOrders.OrderDate`.")
+print("        - Adjust the date range and verify all charts (especially sales-related) filter correctly.")
+
+print("\n   D. Formatting Options Testing (Screenshot 2: Formatting panel)")
+print("      - Explore options like 'Title', 'Chart Colors', 'Number Formatting', 'Data Labels', 'Axis Formatting', 'Legends', 'Background', 'Summary' to ensure they apply changes correctly to the generated charts.")
+
+print("\nThis comprehensive test plan leveraging the generated data will help you validate Tellius's capabilities across various chart types, data relationships, and particularly its handling of fan-out for accurate aggregations.")
